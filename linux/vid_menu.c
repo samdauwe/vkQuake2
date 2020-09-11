@@ -9,7 +9,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -275,7 +275,7 @@ static void CancelChanges( void *unused )
 */
 void VID_MenuInit( void )
 {
-	static const char *resolutions[] = 
+	static const char *resolutions[] =
 	{
 		"[custom   ]",
 		"[320 240  ]",
@@ -289,6 +289,7 @@ void VID_MenuInit( void )
 		"[1280 960 ]",
 		"[1366 768 ]",
 		"[1600 1200]",
+		"[1680 1050]",
 		"[1920 1080]",
 		"[2048 1536]",
 		"[2560 1440]",
@@ -383,7 +384,7 @@ void VID_MenuInit( void )
 		s_current_menu_index = SOFTWARE_MENU;
 		s_ref_list[0].curvalue = s_ref_list[1].curvalue = REF_SOFT;
 	}
-	else if (strcmp( vid_ref->string, "softx" ) == 0 ) 
+	else if (strcmp( vid_ref->string, "softx" ) == 0 )
 	{
 		s_current_menu_index = SOFTWARE_MENU;
 		s_ref_list[0].curvalue = s_ref_list[1].curvalue = REF_SOFTX11;
