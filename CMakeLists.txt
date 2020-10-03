@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.4 FATAL_ERROR)
 
 # Enforce "Debug" as standard build type.
 if(NOT CMAKE_BUILD_TYPE)
@@ -13,6 +13,10 @@ set(VKQ2_VERSION_POINT 3)
 
 # Add extended path for FreeBSD and Homebrew on OS X.
 list(APPEND CMAKE_PREFIX_PATH /usr/local)
+
+if(UNIX)
+  include(GNUInstallDirs)
+endif()
 
 # Architecture string.
 set(Q2ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Override CPU architecture")
@@ -74,6 +78,7 @@ if(UNIX)
   set(SHLIBEXT ${CMAKE_SHARED_LIBRARY_SUFFIX})
   set(SHLIBCFLAGS "-fPIC -std=c99")
   set(SHLIBCPPFLAGS "-fPIC -std=c++11")
+  set(SHLIBLDFLAGS "-shared")
 endif()
 
 # Set compiler flags
@@ -753,6 +758,7 @@ endif()
 ################################################################################
 
 set(REF_VK_SOURCES
+  ${GAME_DIR}/q_shared.c
   ${REF_VK_DIR}/vk_buffer.c
   ${REF_VK_DIR}/vk_cmd.c
   ${REF_VK_DIR}/vk_common.c
@@ -771,10 +777,12 @@ set(REF_VK_SOURCES
   ${REF_VK_DIR}/vk_swapchain.c
   ${REF_VK_DIR}/vk_validation.c
   ${REF_VK_DIR}/vk_warp.c
-  ${GAME_DIR}/q_shared.c
 )
 
 set(REF_VK_HEADERS
+  ${CLIENT_DIR}/keys.h
+  ${COMMON_DIR}/qcommon.h
+  ${GAME_DIR}/q_shared.h
   ${REF_VK_DIR}/anorms.h
   ${REF_VK_DIR}/anormtab.h
   ${REF_VK_DIR}/qvk.h
@@ -787,15 +795,21 @@ set(REF_VK_HEADERS
 if(UNIX)
   set(REF_VK_SOURCES
     ${REF_VK_SOURCES}
+    ${LINUX_DIR}/glob.c
     ${LINUX_DIR}/q_shlinux.c
     ${LINUX_DIR}/vk_imp.c
-    ${LINUX_DIR}/glob.c
+  )
+  set(REF_VK_HEADERS
+    ${REF_VK_HEADERS}
+    ${CLIENT_DIR}/ref.h
+    ${LINUX_DIR}/rw_linux.h
+    ${LINUX_DIR}/vk_linux.h
   )
 endif()
 
-#############################################################################
+################################################################################
 # SETUP AND BUILD
-#############################################################################
+################################################################################
 
 # Main Quake 2 executable
 add_executable(quake2 ${QUAKE2_SOURCES} ${QUAKE2_HEADERS})
@@ -850,7 +864,7 @@ set_target_properties(ref_vk PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${BUILD_DIR}
     SUFFIX ${SHLIBEXT}
 )
-include_directories(ref_vk ${VKCFLAGS})
+target_include_directories(ref_vk PRIVATE ${VKCFLAGS})
 target_compile_options(ref_vk PRIVATE ${SHLIBLDFLAGS})
 target_link_libraries(ref_vk ${VKLDFLAGS} ${Vulkan_LIBRARIES})
 target_compile_definitions(ref_vk PRIVATE -DVK_LOADER_DEBUG=all)
