@@ -29,7 +29,7 @@ This is the official Quake 2 code v3.21 with Vulkan support and mission packs in
 - added Nightmare/Hard+ skill to the game menu
 - added the `aimfix` console command, backported from Berserker@Quake2
 
-A more detailed description of the thought process behind this project can be found in my [blog post](https://kondrak.github.io/posts/2020-09-20-porting-quake2-to-vulkan/), where I explain the overall design, how I attacked some of the challenges and also how things developed after the initial release.
+A more detailed description of the thought process behind this project can be found in my [blog post](https://kondrak.github.io/posts/2020-09-20-porting-quake2-to-vulkan/), where I explain the overall design, how I attacked some of the problems and also how things developed after the initial release.
 
 Building
 ===
@@ -37,7 +37,7 @@ For extra challenge I decided to base vkQuake2 on the original id Software code.
 
 ## Windows
 - download and install the latest [Vulkan SDK](https://vulkan.lunarg.com/)
-- install [Visual Studio Community](https://www.visualstudio.com/products/free-developer-offers-vs) with C++ MFC for build tools and Windows 10 SDK
+- install [Visual Studio Community 2019](https://www.visualstudio.com/products/free-developer-offers-vs) with C++ MFC for build tools and Windows 10 SDK
 - open `quake2.sln` and choose the target architecture (x86/x64) - it should build without any additional steps
 
 ## Linux
@@ -48,7 +48,7 @@ sudo apt install make gcc g++ mesa-common-dev libglu1-mesa-dev libxxf86dga-dev l
 ```
 - Install the latest [Vulkan SDK](https://vulkan.lunarg.com/) - the easiest way is to use [LunarG Ubuntu Packages](https://vulkan.lunarg.com/sdk/home#linux) - just follow the instructions and there will be no additional steps required. If you decide for a manual installation, make sure that proper environment variables are set afterwards by adding the following section to your `.bashrc` file (replace SDK version and location with the ones corresponding to your system):
 ```
-export VULKAN_SDK=/home/user/VulkanSDK/1.2.141.2/x86_64
+export VULKAN_SDK=/home/user/VulkanSDK/1.2.162.1/x86_64
 export PATH=$VULKAN_SDK/bin:$PATH
 export LD_LIBRARY_PATH=$VULKAN_SDK/lib:$LD_LIBRARY_PATH
 export VK_LAYER_PATH=$VULKAN_SDK/etc/explicit_layer.d
@@ -65,7 +65,7 @@ sudo apt install mesa-vulkan-drivers
 - open `macos/vkQuake2.xcworkspace` - it should build without any additional steps
 - alternatively, you can compile the game from the command line - modify your `.bash_profile` and add the following entries (replace SDK version and location with the ones corresponding to your system):
 ```
-export VULKAN_SDK=/home/user/VulkanSDK/1.2.141.2
+export VULKAN_SDK=/home/user/VulkanSDK/1.2.162.1
 export VK_ICD_FILENAMES=$VULKAN_SDK/macOS/share/vulkan/icd.d/MoltenVK_icd.json
 export VK_LAYER_PATH=$VULKAN_SDK/macOS/share/vulkan/explicit_layer.d
 ```
@@ -138,7 +138,7 @@ The following commands are available when using the Vulkan renderer:
 | `vk_mip_nearfilter`     | Use nearest-neighbor filtering for mipmaps. (default: `0`) |
 | `vk_texturemode`        | Change current texture filtering mode:<br>`VK_NEAREST` - nearest-neighbor interpolation, no mipmaps<br>`VK_LINEAR` - linear interpolation, no mipmaps<br>`VK_MIPMAP_NEAREST` - nearest-neighbor interpolation with mipmaps<br>`VK_MIPMAP_LINEAR` - linear interpolation with mipmaps (default) |
 | `vk_lmaptexturemode`    | Same as `vk_texturemode` but applied to lightmap textures. |
-| `vk_fullscreen_exclusive` | Windows only: toggle between exclusive and borderless windowed fullscreen mode (default: `1`). |
+| `vk_fullscreen_exclusive` | Windows only: toggle usage of exclusive fullscreen mode (default: `1`). Note that when this option is enabled, there is no guarantee that exclusive fullscreen can be acquired on your system. |
 
 Acknowledgements
 ===
@@ -146,6 +146,7 @@ Acknowledgements
 - Adam Sawicki for [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) and tips on how to use it as efficiently as possible
 - Axel Gneiting for [vkQuake](https://github.com/Novum/vkQuake) which was a great inspiration and a rich source of knowledge
 - LunarG team and the Khronos Group for their invaluable help and resources
+- Dorian Apanel and the Intel team for technical support, inspiring email discussions and blazing-fast reaction to driver bug reports!
 
 Known Issues
 ===

@@ -848,8 +848,9 @@ static void CreateSamplers()
 	VK_VERIFY(vkCreateSampler(vk_device.logical, &samplerInfo, NULL, &vk_samplers[S_LINEAR]));
 	QVk_DebugSetObjectName((uint64_t)vk_samplers[S_LINEAR], VK_OBJECT_TYPE_SAMPLER, "Sampler: S_LINEAR");
 
-	// aniso samplers
-	assert((vk_device.properties.limits.maxSamplerAnisotropy > 1.f) && "maxSamplerAnisotropy is 1");
+	// aniso samplers - skip if unsupported by current device
+	if (!vk_device.features.samplerAnisotropy || (vk_device.properties.limits.maxSamplerAnisotropy <= 1.f))
+		return;
 
 	samplerInfo.magFilter = VK_FILTER_NEAREST;
 	samplerInfo.minFilter = VK_FILTER_NEAREST;
@@ -1205,7 +1206,6 @@ static void CreatePipelines()
 
 	// draw particles pipeline (using a texture)
 	VK_LOAD_VERTFRAG_SHADERS(shaders, particle, basic);
-	vk_drawParticlesPipeline.depthWriteEnable = VK_FALSE;
 	vk_drawParticlesPipeline.blendOpts.blendEnable = VK_TRUE;
 	QVk_CreatePipeline(&vk_samplerDescSetLayout, 1, &vertInfoRGB_RGBA_RG, &vk_drawParticlesPipeline, &vk_renderpasses[RP_WORLD], shaders, 2, &pushConstantRangeMatrix);
 	QVk_DebugSetObjectName((uint64_t)vk_drawParticlesPipeline.layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, "Pipeline Layout: textured particles");
@@ -1214,7 +1214,6 @@ static void CreatePipelines()
 	// draw particles pipeline (using point list)
 	VK_LOAD_VERTFRAG_SHADERS(shaders, point_particle, point_particle);
 	vk_drawPointParticlesPipeline.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-	vk_drawPointParticlesPipeline.depthWriteEnable = VK_FALSE;
 	vk_drawPointParticlesPipeline.blendOpts.blendEnable = VK_TRUE;
 	QVk_CreatePipeline(&vk_uboDescSetLayout, 1, &vertInfoRGB_RGBA, &vk_drawPointParticlesPipeline, &vk_renderpasses[RP_WORLD], shaders, 2, &pushConstantRangeMatrix);
 	QVk_DebugSetObjectName((uint64_t)vk_drawPointParticlesPipeline.layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, "Pipeline Layout: point particles");
@@ -1494,6 +1493,13 @@ void QVk_Shutdown( void )
 		DestroyDrawBuffers();
 		if (vk_swapchain.sc != VK_NULL_HANDLE)
 		{
+#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
+			if (vk_config.vk_full_screen_exclusive_acquired)
+			{
+				vk_config.vk_full_screen_exclusive_acquired = false;
+				VK_VERIFY(qvkReleaseFullScreenExclusiveModeEXT(vk_device.logical, vk_swapchain.sc));
+			}
+#endif
 			vkDestroySwapchainKHR(vk_device.logical, vk_swapchain.sc, NULL);
 			free(vk_swapchain.images);
 			vk_swapchain.sc = VK_NULL_HANDLE;
@@ -1588,6 +1594,9 @@ qboolean QVk_Init()
 	vk_config.ubo_descriptor_set_count = 0;
 	vk_config.sampler_descriptor_set_count = 0;
 	vk_config.swapchain_image_count = 0;
+	vk_config.vk_khr_portability_subset_available = false;
+	vk_config.vk_khr_get_physical_device_properties2_available = false;
+	vk_config.vk_khr_get_surface_capabilities2_available = false;
 	vk_config.vk_ext_debug_utils_supported = false;
 	vk_config.vk_ext_debug_report_supported = false;
 	vk_config.vk_ext_full_screen_exclusive_available = false;
@@ -1729,6 +1738,9 @@ qboolean QVk_Init()
 	// create Vulkan device - see if the user prefers any specific device if there's more than one GPU in the system
 	QVk_CreateDevice((int)vk_device_idx->value);
 	QVk_DebugSetObjectName((uint64_t)vk_device.physical, VK_OBJECT_TYPE_PHYSICAL_DEVICE, va("Physical Device: %s", vk_config.vendor_name));
+
+	ri.Cvar_Set("vidmenu_aniso", vk_device.features.samplerAnisotropy ? "1" : "0");
+	ri.Cvar_Set("vidmenu_efs", vk_config.vk_ext_full_screen_exclusive_possible ? "1" : "0");
 
 	// create memory allocator
 	VmaAllocatorCreateInfo allocInfo = {
@@ -1957,8 +1969,12 @@ VkResult QVk_BeginFrame()
 			}
 			else
 			{
-				// Some hardware configurations seem to be incapable of acquiring fullscreen exclusive mode - likely due to installed 3rd party software.
-				// This causes the renderer to lock up indefinitely, so let's just revert to borderless window if a failure occurs.
+				// According to vkAcquireFullScreenExclusiveModeEXT documentation:
+				// "An application can attempt to acquire exclusive full-screen access again for the same swapchain
+				// even if this command fails, or if VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT has been returned
+				// by a swapchain command."
+				//
+				// In our case, however, we'll simply revert to borderless windowed mode to avoid potential indefinite lockups here.
 				ri.Con_Printf(PRINT_ALL, "Fullscreen Exclusive Mode acquisition error: %s - reverting to borderless windowed mode.\n", QVk_GetError(res));
 				ri.Cvar_SetValue("vk_fullscreen_exclusive", 0);
 			}
@@ -1981,18 +1997,15 @@ VkResult QVk_BeginFrame()
 
 	VkResult result = vkAcquireNextImageKHR(vk_device.logical, vk_swapchain.sc, UINT32_MAX, vk_imageAvailableSemaphores[vk_activeBufferIdx], VK_NULL_HANDLE, &vk_imageIndex);
 	// for VK_OUT_OF_DATE_KHR and VK_SUBOPTIMAL_KHR it'd be fine to just rebuild the swapchain but let's take the easy way out and restart video system
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_SURFACE_LOST_KHR)
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_SURFACE_LOST_KHR
+#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
+		|| result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
+#endif
+		)
 	{
 		ri.Con_Printf(PRINT_ALL, "QVk_BeginFrame(): received %s after vkAcquireNextImageKHR - restarting video!\n", QVk_GetError(result));
 		return result;
 	}
-#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
-	else if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
-	{
-		ri.Con_Printf(PRINT_ALL, "QVk_BeginFrame(): received VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT after vkAcquireNextImageKHR - attempting to reacquire in next frame.\n");
-		vk_config.vk_full_screen_exclusive_acquired = false;
-	}
-#endif
 	else if (result != VK_SUCCESS)
 	{
 		Sys_Error("QVk_BeginFrame(): unexpected error after vkAcquireNextImageKHR: %s", QVk_GetError(result));
@@ -2085,19 +2098,20 @@ VkResult QVk_EndFrame(qboolean force)
 	VkResult renderResult = vkQueuePresentKHR(vk_device.presentQueue, &presentInfo);
 
 	// for VK_OUT_OF_DATE_KHR and VK_SUBOPTIMAL_KHR it'd be fine to just rebuild the swapchain but let's take the easy way out and restart video system
-	if (renderResult == VK_ERROR_OUT_OF_DATE_KHR || renderResult == VK_SUBOPTIMAL_KHR || renderResult == VK_ERROR_SURFACE_LOST_KHR)
+	if (renderResult == VK_ERROR_OUT_OF_DATE_KHR || renderResult == VK_SUBOPTIMAL_KHR || renderResult == VK_ERROR_SURFACE_LOST_KHR
+#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
+		// According to vkAcquireFullScreenExclusiveModeEXT documentation:
+		// "An application can attempt to acquire exclusive full-screen access again for the same swapchain
+		// even if this command fails, or if VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT has been returned
+		// by a swapchain command."
+		//
+		// This would imply that swapchain recreation should not be required here but apparently vkQueuePresentKHR keeps failing without doing it.
+		|| renderResult == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
+#endif
+		)
 	{
 		ri.Con_Printf(PRINT_ALL, "QVk_EndFrame(): received %s after vkQueuePresentKHR - restarting video!\n", QVk_GetError(renderResult));
 	}
-#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
-	else if (renderResult == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
-	{
-		ri.Con_Printf(PRINT_ALL, "QVk_EndFrame(): received VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT after vkQueuePresentKHR - attempting to reacquire in next frame.\n");
-		vk_config.vk_full_screen_exclusive_acquired = false;
-		// imply success so that we don't restart the renderer needlessly - specs allow reacquiring exclusive fullscreen for the same swapchain
-		renderResult = VK_SUCCESS;
-	}
-#endif
 	else if (renderResult != VK_SUCCESS)
 	{
 		Sys_Error("QVk_EndFrame(): unexpected error after vkQueuePresentKHR: %s", QVk_GetError(renderResult));

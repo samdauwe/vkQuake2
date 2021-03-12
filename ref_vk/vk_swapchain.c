@@ -126,31 +126,29 @@ VkResult QVk_CreateSwapchain()
 	{
 		surfaceCaps = Vkimp_SetupFullScreenExclusive();
 	}
+	else
+	{
 #endif
-
-	VK_VERIFY(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_device.physical, vk_surface, &surfaceCaps));
+		VK_VERIFY(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_device.physical, vk_surface, &surfaceCaps));
+#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
+	}
+#endif
 	VK_VERIFY(vkGetPhysicalDeviceSurfaceFormatsKHR(vk_device.physical, vk_surface, &formatCount, NULL));
 	VK_VERIFY(vkGetPhysicalDeviceSurfacePresentModesKHR(vk_device.physical, vk_surface, &presentModesCount, NULL));
 
-	if (formatCount > 0)
-	{
-		surfaceFormats = (VkSurfaceFormatKHR *)malloc(formatCount * sizeof(VkSurfaceFormatKHR));
-		VK_VERIFY(vkGetPhysicalDeviceSurfaceFormatsKHR(vk_device.physical, vk_surface, &formatCount, surfaceFormats));
-	}
+	surfaceFormats = (VkSurfaceFormatKHR*)malloc(formatCount * sizeof(VkSurfaceFormatKHR));
+	VK_VERIFY(vkGetPhysicalDeviceSurfaceFormatsKHR(vk_device.physical, vk_surface, &formatCount, surfaceFormats));
 
-	if (presentModesCount > 0)
-	{
-		presentModes = (VkPresentModeKHR *)malloc(presentModesCount * sizeof(VkPresentModeKHR));
-		VK_VERIFY(vkGetPhysicalDeviceSurfacePresentModesKHR(vk_device.physical, vk_surface, &presentModesCount, presentModes));
+	presentModes = (VkPresentModeKHR*)malloc(presentModesCount * sizeof(VkPresentModeKHR));
+	VK_VERIFY(vkGetPhysicalDeviceSurfacePresentModesKHR(vk_device.physical, vk_surface, &presentModesCount, presentModes));
 
-		ri.Con_Printf(PRINT_ALL, "Supported present modes: ");
-		for (int i = 0; i < presentModesCount; i++)
-		{
-			ri.Con_Printf(PRINT_ALL, "%s ", presentModeString(presentModes[i]));
-			vk_config.supported_present_modes[i] = presentModeString(presentModes[i]);
-		}
-		ri.Con_Printf(PRINT_ALL, "\n");
+	ri.Con_Printf(PRINT_ALL, "Supported present modes: ");
+	for (int i = 0; i < presentModesCount; i++)
+	{
+		ri.Con_Printf(PRINT_ALL, "%s ", presentModeString(presentModes[i]));
+		vk_config.supported_present_modes[i] = presentModeString(presentModes[i]);
 	}
+	ri.Con_Printf(PRINT_ALL, "\n");
 
 	VkSurfaceFormatKHR swapSurfaceFormat = getSwapSurfaceFormat(surfaceFormats, formatCount);
 	VkPresentModeKHR swapPresentMode = getSwapPresentMode(presentModes, presentModesCount, vk_vsync->value > 0 ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_MAILBOX_KHR);
@@ -167,8 +165,6 @@ VkResult QVk_CreateSwapchain()
 	// request at least 2 images - this fixes fullscreen crashes on AMD when launching the game in fullscreen
 	// update: validation layer performance warning suggests trying triple buffering, so let's try 3 images!
 	uint32_t imageCount = max(3, surfaceCaps.minImageCount);
-	if (swapPresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
-		imageCount = max(3, surfaceCaps.minImageCount);
 
 	if (surfaceCaps.maxImageCount > 0)
 		imageCount = min(imageCount, surfaceCaps.maxImageCount);
@@ -229,14 +225,17 @@ VkResult QVk_CreateSwapchain()
 	// but for some implementation-specific reason exclusive full-screen access is unavailable for the particular combination
 	// of parameters provided. If this occurs, VK_ERROR_INITIALIZATION_FAILED will be returned."
 	//
-	// This seems to affect at least a certain AMD Vega + Intel combination when running on a TV, so disable fullscreen exclusive and try again.
+	// Exclusive fullscreen cannot be guaranteed, so just disable it and try to recreate the swapchain if an error occurs.
 #ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
-	if (vk_config.vk_full_screen_exclusive_enabled && res == VK_ERROR_INITIALIZATION_FAILED)
+	if (vk_config.vk_full_screen_exclusive_enabled && res != VK_SUCCESS)
 	{
-		ri.Con_Printf(PRINT_ALL, "...received VK_ERROR_INITIALIZATION_FAILED from vkCreateSwapchainKHR() - disabling fullscreen exclusive!\n");
+		ri.Con_Printf(PRINT_ALL, "...received %s from vkCreateSwapchainKHR() - disabling fullscreen exclusive!\n", QVk_GetError(res));
 		scCreateInfo.pNext = NULL;
 		res = vkCreateSwapchainKHR(vk_device.logical, &scCreateInfo, NULL, &vk_swapchain.sc);
 		vk_config.vk_full_screen_exclusive_enabled = false;
+		ri.Cvar_SetValue("vk_fullscreen_exclusive", 0);
+		// don't perform unnecessary restart of the renderer
+		vk_fullscreen_exclusive->modified = false;
 	}
 #endif
 
@@ -249,7 +248,18 @@ VkResult QVk_CreateSwapchain()
 	res = vkGetSwapchainImagesKHR(vk_device.logical, vk_swapchain.sc, &imageCount, vk_swapchain.images);
 
 	if (oldSwapchain != VK_NULL_HANDLE)
+	{
+#ifdef FULL_SCREEN_EXCLUSIVE_ENABLED
+		extern PFN_vkReleaseFullScreenExclusiveModeEXT qvkReleaseFullScreenExclusiveModeEXT;
+
+		if (vk_config.vk_full_screen_exclusive_acquired)
+		{
+			vk_config.vk_full_screen_exclusive_acquired = false;
+			VK_VERIFY(qvkReleaseFullScreenExclusiveModeEXT(vk_device.logical, oldSwapchain));
+		}
+#endif
 		vkDestroySwapchainKHR(vk_device.logical, oldSwapchain, NULL);
+	}
 
 	vk_config.swapchain_image_count = imageCount;
 
