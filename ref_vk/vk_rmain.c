@@ -90,7 +90,6 @@ cvar_t	*r_lightlevel;	// FIXME: This is a HACK to get the client's light level
 
 cvar_t	*vk_validation;
 cvar_t	*vk_mode;
-cvar_t	*vk_bitdepth;
 cvar_t	*vk_log;
 cvar_t	*vk_picmip;
 cvar_t	*vk_skymip;
@@ -1048,7 +1047,6 @@ void R_Register( void )
 	vk_validation = ri.Cvar_Get("vk_validation", "0", 0);
 #endif
 	vk_mode = ri.Cvar_Get("vk_mode", "11", CVAR_ARCHIVE);
-	vk_bitdepth = ri.Cvar_Get("vk_bitdepth", "0", 0);
 	vk_log = ri.Cvar_Get("vk_log", "0", 0);
 	vk_picmip = ri.Cvar_Get("vk_picmip", "0", 0);
 	vk_skymip = ri.Cvar_Get("vk_skymip", "0", 0);
@@ -1076,7 +1074,7 @@ void R_Register( void )
 	vk_lmaptexturemode = ri.Cvar_Get("vk_lmaptexturemode", "VK_MIPMAP_LINEAR", CVAR_ARCHIVE);
 	vk_aniso = ri.Cvar_Get("vk_aniso", "1", CVAR_ARCHIVE);
 	vk_mip_nearfilter = ri.Cvar_Get("vk_mip_nearfilter", "0", CVAR_ARCHIVE);
-	vk_sampleshading = ri.Cvar_Get("vk_sampleshading", "1", CVAR_ARCHIVE);
+	vk_sampleshading = ri.Cvar_Get("vk_sampleshading", "0", CVAR_ARCHIVE);
 	vk_vsync = ri.Cvar_Get("vk_vsync", "0", CVAR_ARCHIVE);
 	vk_device_idx = ri.Cvar_Get("vk_device", "-1", CVAR_ARCHIVE);
 	vk_fullscreen_exclusive = ri.Cvar_Get("vk_fullscreen_exclusive", "1", CVAR_ARCHIVE);
